@@ -8,21 +8,24 @@
     <!-- 1. 全局错误捕获 -->
     <script>
         window.onerror = function(msg, url, line, col, error) {
+            // 完全静默常见的跨域脚本错误，不输出到控制台
             if (!msg || msg === 'Script error.' || msg.indexOf('Script error') > -1) {
                 return true; 
             }
-            console.log('Suppressed:', msg);
-            return true;
+            // 其他错误仅在调试模式下输出，或者忽略
+            return false; 
         };
         window.addEventListener('unhandledrejection', function(event) {
-            console.log('Suppressed Promise Error:', event.reason);
+            // 忽略未处理的 Promise 错误，防止红字干扰
             event.preventDefault();
         });
     </script>
 
     <!-- 2. 引入库 -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+    <!-- 引入 heic2any 用于处理苹果 HEIC 图片 -->
+    <script src="https://unpkg.com/heic2any"></script>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -174,6 +177,7 @@
         .img-preview {
             transition: opacity 0.5s ease;
             opacity: 0;
+            z-index: 30; /* 提升层级，确保覆盖在 placeholder 上 */
         }
         .img-preview.has-image {
             opacity: 1;
@@ -187,6 +191,28 @@
         /* SVG 装饰浮动动画 */
         .svg-float { animation: float 6s ease-in-out infinite; }
         .svg-float-delay { animation: float 7s ease-in-out infinite 1s; }
+        
+        /* 地理背景图样式 */
+        .geo-bg {
+            position: absolute;
+            inset: 0;
+            opacity: 0.15;
+            z-index: 0;
+            background-size: cover;
+            background-position: center;
+            mix-blend-mode: multiply;
+            pointer-events: none;
+        }
+        
+        /* 音乐控制按钮动画 */
+        .music-playing {
+            animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        @keyframes pulse-ring {
+            0% { box-shadow: 0 0 0 0 rgba(47, 79, 79, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(47, 79, 79, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(47, 79, 79, 0); }
+        }
     </style>
 </head>
 <body class="font-sans antialiased flex flex-col items-center">
@@ -229,15 +255,15 @@
                 </div>
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <!-- 修正点击触发器，确保移动端响应 -->
+                    <!-- 修正：简化 accept，让 OS 自动转换 -->
                     <div class="aspect-[4/3] bg-gray-50 rounded-2xl relative cursor-pointer overflow-hidden border-2 border-dashed border-gray-300 hover:border-ghibli-sky transition-colors shadow-inner group-upload" onclick="triggerUpload('file-1')">
                         <div class="absolute inset-0 flex flex-col items-center justify-center text-gray-400 group-hover:text-ghibli-sky z-10 pointer-events-none">
                             <i data-lucide="camera" class="w-12 h-12 mb-3"></i>
-                            <span class="text-xs font-bold tracking-widest">TAP TO CAPTURE</span>
+                            <span class="text-xs font-bold tracking-widest">TAP TO UPLOAD</span>
+                            <span class="text-[8px] mt-1 opacity-60">(JPG/PNG/HEIC)</span>
                         </div>
-                        <img id="preview-1" class="img-preview w-full h-full object-cover absolute inset-0 filter-ghibli rounded-2xl z-20" alt="">
-                        <!-- 调整 input 属性顺序，优先 image/* -->
-                        <input type="file" id="file-1" class="hidden" accept="image/*" capture="environment" onchange="previewImage(this, 'preview-1')">
+                        <img id="preview-1" class="img-preview w-full h-full object-cover absolute inset-0 filter-ghibli rounded-2xl" alt="" onerror="handleImageError(this)">
+                        <input type="file" id="file-1" class="hidden" accept="image/*" onchange="previewImage(this, 'preview-1')">
                     </div>
 
                     <div class="space-y-5">
@@ -270,10 +296,10 @@
                     <div class="aspect-[4/3] bg-gray-50 rounded-2xl relative cursor-pointer overflow-hidden border-2 border-dashed border-gray-300 hover:border-indigo-300 transition-colors shadow-inner md:order-2" onclick="triggerUpload('file-2')">
                         <div class="absolute inset-0 flex flex-col items-center justify-center text-gray-400 group-hover:text-indigo-400 z-10 pointer-events-none">
                             <i data-lucide="camera" class="w-12 h-12 mb-3"></i>
-                            <span class="text-xs font-bold tracking-widest">TAP TO CAPTURE</span>
+                            <span class="text-xs font-bold tracking-widest">TAP TO UPLOAD</span>
                         </div>
-                        <img id="preview-2" class="img-preview w-full h-full object-cover absolute inset-0 filter-ghibli rounded-2xl z-20" alt="">
-                        <input type="file" id="file-2" class="hidden" accept="image/*" capture="environment" onchange="previewImage(this, 'preview-2')">
+                        <img id="preview-2" class="img-preview w-full h-full object-cover absolute inset-0 filter-ghibli rounded-2xl" alt="" onerror="handleImageError(this)">
+                        <input type="file" id="file-2" class="hidden" accept="image/*" onchange="previewImage(this, 'preview-2')">
                     </div>
 
                     <div class="space-y-5 md:order-1">
@@ -306,10 +332,10 @@
                     <div class="aspect-[4/3] bg-gray-50 rounded-2xl relative cursor-pointer overflow-hidden border-2 border-dashed border-gray-300 hover:border-amber-300 transition-colors shadow-inner" onclick="triggerUpload('file-3')">
                         <div class="absolute inset-0 flex flex-col items-center justify-center text-gray-400 group-hover:text-amber-400 z-10 pointer-events-none">
                             <i data-lucide="camera" class="w-12 h-12 mb-3"></i>
-                            <span class="text-xs font-bold tracking-widest">TAP TO CAPTURE</span>
+                            <span class="text-xs font-bold tracking-widest">TAP TO UPLOAD</span>
                         </div>
-                        <img id="preview-3" class="img-preview w-full h-full object-cover absolute inset-0 filter-ghibli rounded-2xl z-20" alt="">
-                        <input type="file" id="file-3" class="hidden" accept="image/*" capture="environment" onchange="previewImage(this, 'preview-3')">
+                        <img id="preview-3" class="img-preview w-full h-full object-cover absolute inset-0 filter-ghibli rounded-2xl" alt="" onerror="handleImageError(this)">
+                        <input type="file" id="file-3" class="hidden" accept="image/*" onchange="previewImage(this, 'preview-3')">
                     </div>
 
                     <div class="space-y-5">
@@ -353,13 +379,20 @@
         <!-- 内容容器 -->
         <div id="pages-container" class="w-full h-full relative hidden opacity-0 transition-opacity duration-1000">
             
-            <!-- 导航 -->
-            <div class="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-50 flex space-x-3 bg-white/80 px-4 py-2 rounded-full backdrop-blur-md shadow-sm border border-white">
-                <button onclick="changePage(0)" class="nav-dot w-2 h-2 rounded-full bg-gray-300 hover:bg-ghibli-dark transition-all"></button>
-                <button onclick="changePage(1)" class="nav-dot w-2 h-2 rounded-full bg-gray-300 hover:bg-ghibli-dark transition-all"></button>
-                <button onclick="changePage(2)" class="nav-dot w-2 h-2 rounded-full bg-gray-300 hover:bg-ghibli-dark transition-all"></button>
-                <button onclick="changePage(3)" class="nav-dot w-2 h-2 rounded-full bg-gray-300 hover:bg-ghibli-dark transition-all"></button>
-                <button onclick="changePage(4)" class="nav-dot w-2 h-2 rounded-full bg-gray-300 hover:bg-ghibli-dark transition-all"></button>
+            <!-- 导航与音乐控制 -->
+            <div class="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-50 flex items-center space-x-4 bg-white/80 px-4 py-2 rounded-full backdrop-blur-md shadow-sm border border-white">
+                <!-- 翻页点 -->
+                <div class="flex space-x-3 border-r border-gray-300 pr-4">
+                     <button onclick="changePage(0)" class="nav-dot w-2 h-2 rounded-full bg-gray-300 hover:bg-ghibli-dark transition-all"></button>
+                    <button onclick="changePage(1)" class="nav-dot w-2 h-2 rounded-full bg-gray-300 hover:bg-ghibli-dark transition-all"></button>
+                    <button onclick="changePage(2)" class="nav-dot w-2 h-2 rounded-full bg-gray-300 hover:bg-ghibli-dark transition-all"></button>
+                    <button onclick="changePage(3)" class="nav-dot w-2 h-2 rounded-full bg-gray-300 hover:bg-ghibli-dark transition-all"></button>
+                    <button onclick="changePage(4)" class="nav-dot w-2 h-2 rounded-full bg-gray-300 hover:bg-ghibli-dark transition-all"></button>
+                </div>
+                <!-- 音乐开关 -->
+                <button id="music-btn" onclick="toggleAudio()" class="text-ghibli-dark focus:outline-none">
+                    <i data-lucide="volume-2" class="w-4 h-4"></i>
+                </button>
             </div>
 
              <div class="absolute top-6 right-6 z-50">
@@ -371,11 +404,9 @@
 
             <!-- Page 0: Cover -->
             <div id="page-0" class="page absolute inset-0 flex flex-col items-center justify-center p-6 bg-paper overflow-hidden">
-                <!-- 装饰：大煤炭球 -->
                 <div class="absolute top-10 left-10 w-24 h-24 opacity-60 svg-float pointer-events-none">
                      <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <circle cx="50" cy="50" r="40" fill="#1a1a1a"/>
-                        <!-- 毛刺效果简化 -->
                         <path d="M50 10 L50 5 M50 90 L50 95 M10 50 L5 50 M90 50 L95 50" stroke="#1a1a1a" stroke-width="4"/>
                         <circle cx="35" cy="45" r="8" fill="white"/>
                         <circle cx="65" cy="45" r="8" fill="white"/>
@@ -400,7 +431,9 @@
 
             <!-- Page 1 -->
             <div id="page-1" class="page absolute inset-0 hidden p-6 md:p-12 flex flex-col md:flex-row items-center justify-center bg-[#fdfdfd] overflow-hidden">
-                 <!-- 装饰：树精 (Kodama) -->
+                 <!-- 地理背景 (Geo SVG) -->
+                 <div id="geo-bg-1" class="geo-bg"></div>
+
                  <div class="absolute bottom-10 right-10 w-16 h-24 opacity-50 svg-float-delay pointer-events-none">
                     <svg viewBox="0 0 60 100" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M30 20C40 20 45 30 40 40C35 50 25 50 20 40C15 30 20 20 30 20" fill="white" stroke="#ccc" stroke-width="2"/>
@@ -416,7 +449,7 @@
                         <img id="out-img-1" class="w-full h-full object-cover shadow-ghibli rounded-sm filter-ghibli relative z-10" src="">
                      </div>
                 </div>
-                <div class="w-full md:w-1/2 flex flex-col justify-center text-left md:pl-12">
+                <div class="w-full md:w-1/2 flex flex-col justify-center text-left md:pl-12 relative z-10">
                     <span class="text-6xl font-serif text-gray-100 font-bold absolute top-10 right-10 -z-10">01</span>
                     <h3 id="out-loc-1" class="font-bold text-ghibli-dark uppercase tracking-widest text-sm mb-1">...</h3>
                     <p id="out-date-1" class="font-serif italic text-gray-400 mb-6 text-xs">...</p>
@@ -426,7 +459,9 @@
 
             <!-- Page 2 -->
             <div id="page-2" class="page absolute inset-0 hidden p-6 md:p-12 flex flex-col md:flex-row-reverse items-center justify-center bg-blue-50/20 overflow-hidden">
-                 <!-- 装饰：猫巴士轮廓 -->
+                 <!-- 地理背景 (Geo SVG) -->
+                 <div id="geo-bg-2" class="geo-bg"></div>
+
                  <div class="absolute top-20 left-10 w-32 h-20 opacity-20 pointer-events-none">
                     <svg viewBox="0 0 100 60" fill="#2F4F4F" xmlns="http://www.w3.org/2000/svg">
                          <ellipse cx="50" cy="30" rx="40" ry="20" />
@@ -442,7 +477,7 @@
                         <img id="out-img-2" class="w-full h-full object-cover shadow-xl rounded-full aspect-square filter-ghibli relative z-10 border-4 border-white" src="">
                      </div>
                 </div>
-                <div class="w-full md:w-1/2 flex flex-col justify-center text-right md:text-left md:pr-12">
+                <div class="w-full md:w-1/2 flex flex-col justify-center text-right md:text-left md:pr-12 relative z-10">
                     <span class="text-6xl font-serif text-gray-100 font-bold absolute bottom-10 left-10 -z-10">02</span>
                     <h3 id="out-loc-2" class="font-bold text-ghibli-dark uppercase tracking-widest text-sm mb-1">...</h3>
                     <p id="out-date-2" class="font-serif italic text-gray-400 mb-6 text-xs">...</p>
@@ -452,10 +487,13 @@
 
              <!-- Page 3 -->
              <div id="page-3" class="page absolute inset-0 hidden p-6 md:p-12 flex flex-col md:flex-row items-center justify-center bg-[#fffcf5] overflow-hidden">
+                <!-- 地理背景 (Geo SVG) -->
+                <div id="geo-bg-3" class="geo-bg"></div>
+
                 <div class="w-full md:w-1/2 h-1/2 md:h-full flex items-center justify-center p-4">
-                    <img id="out-img-3" class="w-full h-auto aspect-video object-cover shadow-ghibli rounded-xl filter-ghibli transform rotate-1" src="">
+                    <img id="out-img-3" class="w-full h-auto aspect-video object-cover shadow-ghibli rounded-xl filter-ghibli transform rotate-1 relative z-10" src="">
                </div>
-               <div class="w-full md:w-1/2 flex flex-col justify-center text-center md:text-left md:pl-12">
+               <div class="w-full md:w-1/2 flex flex-col justify-center text-center md:text-left md:pl-12 relative z-10">
                    <div class="mb-6">
                        <i data-lucide="map-pin" class="w-5 h-5 text-gray-300 mx-auto md:mx-0 mb-2"></i>
                        <h3 id="out-loc-3" class="font-sans font-bold text-xl text-ghibli-dark">...</h3>
@@ -476,7 +514,6 @@
                     <div class="shooting-star" style="top: 20%; left: 80%; animation-delay: 3s;"></div>
                 </div>
 
-                <!-- 装饰：发光的树精 -->
                 <div class="absolute bottom-10 left-10 opacity-30 animate-pulse">
                      <svg viewBox="0 0 60 100" fill="white" xmlns="http://www.w3.org/2000/svg" width="40" height="60">
                         <path d="M30 20C40 20 45 30 40 40C35 50 25 50 20 40C15 30 20 20 30 20" fill="white"/>
@@ -522,6 +559,10 @@
         let currentPage = 0;
         const totalPages = 5;
         let userData = {};
+        let audioContext = null;
+        let isPlaying = false;
+        let oscillators = [];
+        let gainNode = null;
 
         document.addEventListener('DOMContentLoaded', () => {
             if (window.lucide) {
@@ -534,7 +575,181 @@
             document.getElementById(inputId).click();
         }
 
-        // 增强版 AI 模拟逻辑：生成详细文案
+        // ================= HEIC 处理逻辑 =================
+        function handleImageError(img) {
+            // 图片加载失败（可能是HEIC转码失败或原始格式不支持）
+            // 替换为默认图，避免破碎图标
+            img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ccc' stroke-width='2'%3E%3Crect x='3' y='3' width='18' height='18' rx='2' ry='2'/%3E%3Ccircle cx='8.5' cy='8.5' r='1.5'/%3E%3Cpolyline points='21 15 16 10 5 21'/%3E%3C/svg%3E";
+            img.classList.remove('has-image');
+            alert("图片无法加载。请尝试使用标准的 JPG 或 PNG 格式。");
+        }
+
+        function previewImage(input, previewId) {
+            const file = input.files && input.files[0];
+            if (!file) return;
+
+            const imgEl = document.getElementById(previewId);
+            
+            // 尝试直接显示（现代浏览器可能支持）
+            const url = URL.createObjectURL(file);
+            imgEl.src = url;
+            imgEl.classList.add('has-image');
+            const key = previewId.replace('preview-', 'img-');
+            userData[key] = url;
+
+            // 如果是 HEIC，尝试使用 heic2any 进行转换（作为保险措施）
+            // 注意：如果直接显示成功，此步骤可能多余，但在不支持的浏览器上是必须的。
+            // 鉴于 heic2any 在此环境不稳定，我们主要依赖原生支持 + accept="image/*" 的系统级转换。
+            if (file.name.toLowerCase().endsWith('.heic')) {
+                if (window.heic2any) {
+                    heic2any({
+                        blob: file,
+                        toType: "image/jpeg",
+                        quality: 0.8
+                    })
+                    .then((conversionResult) => {
+                        const newUrl = URL.createObjectURL(conversionResult);
+                        imgEl.src = newUrl;
+                        userData[key] = newUrl;
+                    })
+                    .catch((e) => {
+                        // 转换失败，不做处理，依赖原生显示或触发 onerror
+                        console.warn("HEIC conversion skipped/failed, relying on native support.");
+                    });
+                }
+            }
+        }
+
+        // ================= AI 地图 SVG 生成器 =================
+        // 基于字符串哈希生成伪随机的“街道”地图背景
+        function generateGeoSVG(seedString) {
+            if (!seedString || seedString.length === 0) {
+                // 默认图钉地图
+                return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="40" stroke="%23ccc" stroke-width="1" stroke-dasharray="4 4"/><path d="M50 30 C50 30 65 30 65 45 C65 65 50 80 50 80 C50 80 35 65 35 45 C35 30 50 30 50 30 Z" fill="%23eee" stroke="%23999" stroke-width="2"/><circle cx="50" cy="45" r="5" fill="%232F4F4F"/></svg>`;
+            }
+
+            // 简单哈希函数
+            let hash = 0;
+            for (let i = 0; i < seedString.length; i++) {
+                hash = ((hash << 5) - hash) + seedString.charCodeAt(i);
+                hash |= 0;
+            }
+            
+            // 使用哈希生成随机线条 (模拟街道)
+            let paths = "";
+            const rng = () => {
+                hash = (hash * 9301 + 49297) % 233280;
+                return hash / 233280;
+            };
+
+            for (let i = 0; i < 8; i++) {
+                const x1 = rng() * 100;
+                const y1 = rng() * 100;
+                const x2 = rng() * 100;
+                const y2 = rng() * 100;
+                paths += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="%23aaa" stroke-width="${rng() * 2 + 0.5}" opacity="0.4" />`;
+            }
+            
+            // 添加一个代表“地点”的圆点
+            const cx = 30 + rng() * 40;
+            const cy = 30 + rng() * 40;
+
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none">${paths}<circle cx="${cx}" cy="${cy}" r="3" fill="%2387CEEB" opacity="0.8"/></svg>`;
+            
+            // 返回 Data URI (注意 URL 编码)
+            return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+        }
+
+        // ================= Web Audio API 旋律生成 =================
+        function initAudio() {
+            if (!audioContext) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioContext = new AudioContext();
+            }
+        }
+
+        function playThemeMusic(themeType) {
+            initAudio();
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            stopMusic(); // 停止之前的
+
+            gainNode = audioContext.createGain();
+            gainNode.gain.value = 0.15; // 音量
+            gainNode.connect(audioContext.destination);
+
+            let frequencies = [];
+            
+            // 根据主题选择和弦 (简单 Pad)
+            if (themeType === 'sun') {
+                // C Major 7 (C, E, G, B) - 温暖，阳光
+                frequencies = [261.63, 329.63, 392.00, 493.88]; 
+            } else if (themeType === 'rain') {
+                // A Minor 9 (A, C, E, G, B) - 忧郁，静谧
+                frequencies = [220.00, 261.63, 329.63, 392.00, 493.88]; 
+            } else {
+                // F Major (F, A, C) - 流动，风
+                frequencies = [174.61, 220.00, 261.63, 349.23];
+            }
+
+            frequencies.forEach(freq => {
+                const osc = audioContext.createOscillator();
+                osc.type = 'triangle'; // 三角波适合做 Pad
+                osc.frequency.setValueAtTime(freq, audioContext.currentTime);
+                
+                // 增加一点微小的随机失谐，让声音更自然宽广
+                osc.detune.value = Math.random() * 10 - 5;
+
+                osc.connect(gainNode);
+                osc.start();
+                oscillators.push(osc);
+            });
+            
+            // 简单的淡入
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.1, audioContext.currentTime + 2);
+
+            isPlaying = true;
+            document.getElementById('music-btn').innerHTML = '<i data-lucide="volume-2" class="w-4 h-4"></i>';
+            document.getElementById('music-btn').classList.add('music-playing');
+        }
+
+        function stopMusic() {
+            if (oscillators.length > 0) {
+                oscillators.forEach(osc => {
+                    try {
+                        // 淡出
+                        const tempGain = audioContext.createGain();
+                        tempGain.gain.setValueAtTime(0.1, audioContext.currentTime);
+                        tempGain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 1);
+                        osc.stop(audioContext.currentTime + 1);
+                    } catch(e){}
+                });
+                oscillators = [];
+            }
+            isPlaying = false;
+            const btn = document.getElementById('music-btn');
+            if(btn) {
+                btn.innerHTML = '<i data-lucide="volume-x" class="w-4 h-4"></i>';
+                btn.classList.remove('music-playing');
+            }
+        }
+
+        function toggleAudio() {
+            if (isPlaying) {
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.5);
+                setTimeout(stopMusic, 500);
+            } else {
+                // 重新根据当前页面或主题播放？这里简单恢复最后一次的主题音乐
+                // 实际使用时需保存 currentThemeType
+                if(userData.currentThemeType) playThemeMusic(userData.currentThemeType);
+            }
+        }
+
+
+        // ================= 核心逻辑 =================
+
         async function simulateAIProcessing(textData) {
             return new Promise((resolve) => {
                 setTimeout(() => {
@@ -546,43 +761,30 @@
                     positiveWords.forEach(w => { if(allText.includes(w)) score++; });
                     melancholicWords.forEach(w => { if(allText.includes(w)) score--; });
 
-                    let theme, summary, outlook;
+                    let theme, summary, outlook, themeType;
 
                     if (score > 1) {
+                        themeType = 'sun';
                         theme = { title: "Spirit of<br>Sunshine", subtitle: "A year that felt like a warm embrace.", color: "text-amber-600" };
                         summary = "这一年，你像追逐阳光的孩子，在每一个平凡的日子里收集快乐。从初见的惊喜到旅途的欢笑，你的镜头里装满了明亮色彩。那些笑容不仅照亮了你自己，也温暖了身边的人。";
                         outlook = "愿 2026 年，你继续保持这份赤诚与热烈。去爱，去飞翔，去拥抱更广阔的天空，让生命如夏花般绚烂。";
                     } else if (score < -1) {
+                        themeType = 'rain';
                         theme = { title: "Quiet<br>Rain", subtitle: "Growth happens silently in the deep.", color: "text-slate-600" };
                         summary = "这一年或许有些许阴雨，但你在静默中学会了坚韧。那些独自走过的路，看过的风景，都化作了内心的养分。你学会了与自己独处，在喧嚣中找到了一方净土。";
                         outlook = "愿 2026 年，雨过天晴。希望你所有的隐忍都化为破土而出的力量，在新的季节里，遇见彩虹，温柔且坚定。";
                     } else {
+                        themeType = 'wind';
                         theme = { title: "Wind<br>Walker", subtitle: "Moving forward, gentle and steady.", color: "text-green-700" };
                         summary = "这一年，你如风般自由，步履不停。没有大起大落，却有着踏实的安稳。你在平淡中发现了细微的美好，在归途中找到了内心的归属。这是一种难得的平衡与智慧。";
                         outlook = "愿 2026 年，依然步履轻盈，但能去往更远的地方。愿风常伴你左右，带你去见未曾见过的风景，不负热爱。";
                     }
 
-                    resolve({ theme, summary, outlook });
+                    resolve({ theme, summary, outlook, themeType });
                 }, 2500);
             });
         }
 
-        function previewImage(input, previewId) {
-            const file = input.files && input.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const img = document.getElementById(previewId);
-                    if (img) {
-                        img.src = e.target.result;
-                        img.classList.add('has-image');
-                        const key = previewId.replace('preview-', 'img-');
-                        userData[key] = e.target.result;
-                    }
-                }
-                reader.readAsDataURL(file);
-            }
-        }
 
         async function initiateGeneration() {
             let textData = {};
@@ -592,7 +794,7 @@
                 const storyVal = document.getElementById(`story-${i}`).value;
 
                 userData[`date-${i}`] = dateVal || '2025 Memory';
-                userData[`loc-${i}`] = locVal || 'Somewhere';
+                userData[`loc-${i}`] = locVal || ''; // 允许空
                 userData[`story-${i}`] = storyVal || '...';
                 textData[`story-${i}`] = storyVal || ''; 
 
@@ -612,17 +814,25 @@
                 outputSection.classList.add('flex');
             }, 700);
 
-            const statusSteps = ["Extracting visual sentiment...", "Composing Ghibli narrative...", "Rendering starfall effects..."];
+            const statusSteps = ["Extracting visual sentiment...", "Composing Ghibli narrative...", "Rendering starfall effects...", "Generating audio soundscape..."];
             let step = 0;
             const statusInterval = setInterval(() => {
                 if(step < statusSteps.length) statusText.innerText = statusSteps[step++];
-            }, 800);
+            }, 600);
 
+            // 获取结果
             const aiResult = await simulateAIProcessing(textData);
             clearInterval(statusInterval);
 
+            // 保存主题类型以便 toggleAudio 使用
+            userData.currentThemeType = aiResult.themeType;
+
+            // 应用数据
             applyData(aiResult);
             
+            // 播放音乐 (注意：部分浏览器需要用户手势才能启动 AudioContext，这里的点击 Generate 按钮即为手势)
+            playThemeMusic(aiResult.themeType);
+
             document.getElementById('loading-state').style.display = 'none';
             const pages = document.getElementById('pages-container');
             pages.classList.remove('hidden');
@@ -639,13 +849,24 @@
             document.getElementById('theme-subtitle').innerText = t.subtitle;
             document.getElementById('theme-title').className = `font-serif text-5xl md:text-7xl mb-8 leading-tight drop-shadow-sm ${t.color}`;
 
-            // Content
+            // Content & Geo Backgrounds
             document.getElementById('out-img-1-cover').src = userData['img-1'];
             for(let i=1; i<=3; i++) {
                 document.getElementById(`out-img-${i}`).src = userData[`img-${i}`];
                 document.getElementById(`out-date-${i}`).innerText = userData[`date-${i}`];
-                document.getElementById(`out-loc-${i}`).innerText = userData[`loc-${i}`];
+                
+                // 地点文字
+                const locText = userData[`loc-${i}`] || '';
+                document.getElementById(`out-loc-${i}`).innerText = locText || 'Unknown Location';
+                
+                // 故事文字
                 document.getElementById(`out-story-${i}`).innerText = userData[`story-${i}`];
+                
+                // 生成并应用矢量地图背景
+                const bgEl = document.getElementById(`geo-bg-${i}`);
+                if (bgEl) {
+                    bgEl.style.backgroundImage = `url('${generateGeoSVG(locText)}')`;
+                }
             }
 
             // Final Summary & Outlook
@@ -674,6 +895,8 @@
         function prevPage() { if(currentPage > 0) changePage(currentPage - 1); }
         
         function resetApp() {
+            stopMusic(); // 停止音乐
+            
             const inputSection = document.getElementById('input-section');
             const outputSection = document.getElementById('output-section');
             const pagesContainer = document.getElementById('pages-container');
