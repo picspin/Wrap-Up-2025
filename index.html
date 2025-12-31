@@ -4,15 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>2025 年终信笺 | Ghibli Style Wrap-Up</title>
+    <!-- 解决 favicon 404 报错 -->
+    <link rel="icon" href="data:,">
     
-    <!-- 1. 全局错误捕获 -->
+    <!-- 1. 全局错误捕获：深度屏蔽浏览器插件干扰 -->
     <script>
+        // 定义需要屏蔽的错误关键词列表
+        const ignoredErrors = [
+            'Script error',
+            'MutationObserver',
+            'message channel closed',
+            'Tracking Prevention',
+            'runtime.lastError',
+            'Extension context invalidated'
+        ];
+
         window.onerror = function(msg, url, line, col, error) {
-            // 屏蔽无关的脚本错误和 Userscript 注入错误
-            return true; 
+            // 转换为字符串进行检查
+            const errorMsg = String(msg);
+            if (ignoredErrors.some(keyword => errorMsg.includes(keyword))) {
+                return true; // 阻止报错显示
+            }
+            return false; 
         };
+
         window.addEventListener('unhandledrejection', function(event) {
-            event.preventDefault();
+            const reason = String(event.reason);
+            if (ignoredErrors.some(keyword => reason.includes(keyword))) {
+                event.preventDefault();
+            }
         });
     </script>
 
@@ -275,7 +295,7 @@
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Where</label>
-                                <input type="text" id="loc-1" placeholder="The Hill..." class="ghibli-input w-full font-serif text-sm">
+                                <input type="text" id="loc-1" placeholder="Beijing..." class="ghibli-input w-full font-serif text-sm">
                             </div>
                         </div>
                         <div class="flex-grow">
@@ -311,7 +331,7 @@
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Where</label>
-                                <input type="text" id="loc-2" placeholder="By the sea..." class="ghibli-input w-full font-serif text-sm">
+                                <input type="text" id="loc-2" placeholder="Shanghai..." class="ghibli-input w-full font-serif text-sm">
                             </div>
                         </div>
                         <div class="flex-grow">
@@ -613,13 +633,17 @@
             const seed = (locationName || 'unknown').toLowerCase();
             const strokeColor = color || '#87CEEB';
             
-            // 简单的“深度推理”模拟：关键词匹配
+            // 简单的“深度推理”模拟：关键词匹配 (支持中文和英文)
             let type = 'generic'; // generic, city, nature, coast, historic
             
-            if (seed.match(/tokyo|york|shanghai|city|downtown|street|tower/)) type = 'city';
-            else if (seed.match(/mountain|hill|peak|forest|park|garden|camp/)) type = 'nature';
-            else if (seed.match(/sea|beach|ocean|island|bay|port|bridge/)) type = 'coast';
-            else if (seed.match(/temple|shrine|castle|museum|old|history/)) type = 'historic';
+            // 城市类: City, Downtown, Tower, Street, 市, 城, 楼, 厦, 京, 沪, 穗, 圳
+            if (seed.match(/tokyo|york|shanghai|city|downtown|street|tower|building|metropolis|beijing|london|paris|seoul|市|城|楼|厦|京|沪|穗|圳|都|镇/)) type = 'city';
+            // 自然类: Mountain, Hill, Peak, Forest, Park, Garden, Camp, 山, 峰, 林, 森, 园, 草, 野, 岭
+            else if (seed.match(/mountain|hill|peak|forest|park|garden|camp|valley|nature|tree|山|峰|林|森|园|草|野|岭|谷/)) type = 'nature';
+            // 海岸类: Sea, Beach, Ocean, Island, Bay, Port, Bridge, 海, 滩, 岛, 湾, 湖, 江, 河, 桥, 溪, 水
+            else if (seed.match(/sea|beach|ocean|island|bay|port|bridge|lake|river|water|coast|海|滩|岛|湾|湖|江|河|桥|溪|水|岸/)) type = 'coast';
+            // 历史类: Temple, Shrine, Castle, Museum, Old, History, 寺, 庙, 宫, 殿, 塔, 古, 馆, 陵
+            else if (seed.match(/temple|shrine|castle|museum|old|history|church|palace|ruins|寺|庙|宫|殿|塔|古|馆|陵|刹|祠/)) type = 'historic';
 
             // SVG Path 库
             const paths = {
@@ -639,14 +663,22 @@
                 historic: `<path d="M20 100 L20 50 L50 20 L80 50 L80 100" fill="none" stroke="${strokeColor}" stroke-width="2" opacity="0.3"/>
                            <line x1="50" y1="20" x2="50" y2="10" stroke="${strokeColor}" stroke-width="2" opacity="0.5"/>
                            <path d="M15 50 L85 50" stroke="${strokeColor}" stroke-width="1" opacity="0.4"/>`,
-                // 通用：抽象线条
-                generic: `<path d="M10 90 Q 50 10, 90 90" fill="none" stroke="${strokeColor}" stroke-width="1" opacity="0.2"/>
-                          <circle cx="50" cy="50" r="30" stroke="${strokeColor}" stroke-width="0.5" stroke-dasharray="4 2" opacity="0.2"/>`
+                // 通用：抽象线条 (使用简单的哈希算法确保同一地点每次生成的“抽象线”一致)
+                generic: (() => {
+                    let hash = 0;
+                    for (let i = 0; i < seed.length; i++) hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+                    const y1 = Math.abs(hash % 80) + 10;
+                    const x2 = Math.abs((hash >> 2) % 80) + 10;
+                    return `<path d="M10 90 Q 50 ${y1}, 90 90" fill="none" stroke="${strokeColor}" stroke-width="1" opacity="0.2"/>
+                            <circle cx="${x2}" cy="50" r="30" stroke="${strokeColor}" stroke-width="0.5" stroke-dasharray="4 2" opacity="0.2"/>`;
+                })()
             };
 
-            const svgContent = paths[type];
+            const svgContent = typeof paths[type] === 'string' ? paths[type] : paths[type];
             const svgString = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none">${svgContent}</svg>`;
-            return `data:image/svg+xml;base64,${btoa(svgString)}`;
+            
+            // 使用 Base64 编码防止字符集问题
+            return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svgString)))}`;
         }
 
         // ================= Web Audio =================
@@ -673,7 +705,7 @@
             } else if (themeType === 'quiet') { // 静水流深 (Quiet Growth) - 内省，E Minor
                 frequencies = [164.81, 196.00, 246.94, 329.63]; 
             } else { // 追风逐日 (Wind Walker) - 自由，F Major 7
-                frequencies = [174.61, 220.00, 261.63, 349.23];
+                frequencies = [174.61, 220.00, 261.63, 349.23]; 
             }
 
             frequencies.forEach(freq => {
@@ -730,12 +762,12 @@
                 setTimeout(() => {
                     const allText = Object.values(textData).join(' ').toLowerCase();
                     
-                    // 1. 数据维度提取 (模拟)
+                    // 1. 数据维度提取 (模拟) - 支持中英文
                     const keywords = {
-                        growth: ['learn', 'study', 'work', 'hard', 'challenge', 'new', 'start', '学习', '工作', '挑战', '开始'],
-                        emotion: ['love', 'happy', 'sad', 'cry', 'miss', 'joy', 'pain', '爱', '快乐', '难过', '泪', '思念'],
-                        movement: ['travel', 'go', 'leave', 'fly', 'train', 'road', '旅行', '离开', '飞', '路'],
-                        nature: ['sun', 'rain', 'wind', 'sea', 'mountain', 'sky', '阳光', '雨', '风', '海', '山']
+                        growth: ['learn', 'study', 'work', 'hard', 'challenge', 'new', 'start', '学习', '工作', '挑战', '开始', '努力', '奋斗', '突破'],
+                        emotion: ['love', 'happy', 'sad', 'cry', 'miss', 'joy', 'pain', '爱', '快乐', '难过', '泪', '思念', '遗憾', '确幸', '感动'],
+                        movement: ['travel', 'go', 'leave', 'fly', 'train', 'road', '旅行', '离开', '飞', '路', '车', '奔赴', '远方'],
+                        nature: ['sun', 'rain', 'wind', 'sea', 'mountain', 'sky', '阳光', '雨', '风', '海', '山', '云', '雪', '星']
                     };
 
                     let scores = { growth: 0, emotion: 0, movement: 0, nature: 0 };
